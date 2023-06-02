@@ -24,7 +24,7 @@ FROM "${DOCKER_HUB_PROXY}debian:bullseye-slim" as php-build
         libsimdjson-dev \
         git \
         && apt-get autoremove -y && apt-get clean -y && rm -rf /var/lib/apt/lists/*
-        
+
         RUN pecl channel-update pecl.php.net
         RUN cp "/usr/lib/$(gcc -dumpmachine)"/libfuzzy.* /usr/lib; pecl install ssdeep && pecl install rdkafka && pecl install simdjson
         RUN git clone --recursive --depth=1 https://github.com/kjdev/php-ext-brotli.git && cd php-ext-brotli && phpize && ./configure && make && make install
