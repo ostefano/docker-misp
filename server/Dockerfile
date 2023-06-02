@@ -138,12 +138,13 @@ FROM "${DOCKER_HUB_PROXY}debian:bullseye-slim"
         && apt-get autoremove -y && apt-get clean -y && rm -rf /var/lib/apt/lists/*
 
     # Download MISP using git in the /var/www/ directory.
-    RUN if [ ! -z ${MISP_COMMIT} ]; then \
+    RUN if [ -n ${MISP_COMMIT} ]; then \
      git clone https://github.com/MISP/MISP.git /var/www/MISP && cd /var/www/MISP && git checkout ${MISP_COMMIT}; \
      else git clone --branch ${MISP_TAG} --depth 1 https://github.com/MISP/MISP.git /var/www/MISP; fi
     RUN cd /var/www/MISP; git submodule update --init --recursive .; cd /var/www/MISP/app; \
         # Remove some old and broken links that pollute the log files
-        rm -rf /var/www/MISP/INSTALL/old
+        rm -rf /var/www/MISP/INSTALL/old; \
+        rm -rf /var/www/MISP/.git;
 
     # Python Modules
     COPY --from=python-build /wheels /wheels
@@ -155,9 +156,9 @@ FROM "${DOCKER_HUB_PROXY}debian:bullseye-slim"
     COPY --from=php-build /usr/lib/php/${PHP_VER}/brotli.so /usr/lib/php/${PHP_VER}/brotli.so
     COPY --from=php-build /usr/lib/php/${PHP_VER}/simdjson.so /usr/lib/php/${PHP_VER}/simdjson.so
 
-    COPY --from=composer-build /tmp/Vendor /var/www/MISP/app/Vendor
-    COPY --from=composer-build /tmp/Plugin /var/www/MISP/app/Plugin
-    
+    COPY --from=composer-build --chown=www-data:www-data /tmp/Vendor /var/www/MISP/app/Vendor
+    COPY --from=composer-build --chown=www-data:www-data /tmp/Plugin /var/www/MISP/app/Plugin
+
     RUN for dir in /etc/php/*; do echo "extension=ssdeep.so" > "$dir/mods-available/ssdeep.ini"; done; phpenmod ssdeep
     RUN for dir in /etc/php/*; do echo "extension=rdkafka.so" > "$dir/mods-available/rdkafka.ini"; done; phpenmod rdkafka
     RUN for dir in /etc/php/*; do echo "extension=brotli.so" > "$dir/mods-available/brotli.ini"; done; phpenmod brotli
@@ -169,17 +170,18 @@ FROM "${DOCKER_HUB_PROXY}debian:bullseye-slim"
     COPY files/etc/nginx/misp /etc/nginx/sites-available/misp
     COPY files/etc/nginx/misp80 /etc/nginx/sites-available/misp80
 
-    # Make a copy of the file store, so we can sync from it
-    RUN cp -R /var/www/MISP/app/files /var/www/MISP/app/files.dist
-    # Make a copy of the configurations, so we can sync from it
-    RUN cp -R /var/www/MISP/app/Config /var/www/MISP/app/Config.dist
+        # Make a copy of the file store, so we can sync from it
+    RUN cp -R /var/www/MISP/app/files /var/www/MISP/app/files.dist; \
+        # Make a copy of the configurations, so we can sync from it
+        cp -R /var/www/MISP/app/Config /var/www/MISP/app/Config.dist;
 
-    # The spirit of the upstrem dockerization is to keep user and group aligned in terms of permissions
-    RUN find /var/www/MISP \( ! -user www-data -or ! -group www-data \) -exec chown www-data:www-data {} +
-    # Files are also executable and read only, because we have some rogue scripts like 'cake' and we can not do a full inventory
-    RUN find /var/www/MISP -not -perm 550 -type f -exec chmod 0550 {} +
-    # Directories are also writable, because there seems to be a requirement to add new files every once in a while
-    RUN find /var/www/MISP -not -perm 770 -type d -exec chmod 0770 {} +
+    # Combine find+chown/mod-RUNs to not explode image size
+        # The spirit of the upstrem dockerization is to keep user and group aligned in terms of permissions
+    RUN find /var/www/MISP \( ! -user www-data -or ! -group www-data \) -exec chown www-data:www-data '{}' +; \
+        # Files are also executable and read only, because we have some rogue scripts like 'cake' and we can not do a full inventory
+        find /var/www/MISP -not -perm 550 -type f -exec chmod 0550 '{}' +; \
+        # Directories are also writable, because there seems to be a requirement to add new files every once in a while
+        find /var/www/MISP -not -perm 770 -type d -exec chmod 0770 '{}' +;
 
     # Entrypoints
     COPY files/etc/supervisor/supervisor.conf /etc/supervisor/conf.d/10-supervisor.conf
