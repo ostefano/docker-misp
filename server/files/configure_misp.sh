@@ -87,7 +87,7 @@ apply_updates() {
     # Disable weird default
     sudo -u www-data /var/www/MISP/app/Console/cake Admin setSetting -q "Plugin.ZeroMQ_enable" false
     # Run updates
-    sudo -u www-data /var/www/MISP/app/Console/cake Admin runUpdates
+    sudo -u www-data /var/www/MISP/app/Console/cake Admin runUpdates | sed -r "s/[[:cntrl:]]\[[0-9]{1,3}m//g"
 }
 
 init_user() {
