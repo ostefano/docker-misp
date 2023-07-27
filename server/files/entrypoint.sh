@@ -7,5 +7,9 @@ export NUM_WORKERS_EMAIL=${NUM_WORKERS_EMAIL:-${WORKERS:-5}}
 export NUM_WORKERS_UPDATE=${NUM_WORKERS_UPDATE:-${WORKERS:-1}}
 export NUM_WORKERS_CACHE=${NUM_WORKERS_CACHE:-${WORKERS:-5}}
 
+# backward compatible HOSTNAME -> BASEURL
+[ -n "$HOSTNAME" ] && [ -z "$BASEURL" ] && export BASEURL="$HOSTNAME"
+[ -z "$BASEURL" ] && export BASEURL="https://localhost"
+
 # start supervisord using the main configuration file so we have a socket interface
 /usr/bin/supervisord -c /etc/supervisor/supervisord.conf

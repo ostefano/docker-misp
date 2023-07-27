@@ -11,7 +11,7 @@ init_configuration(){
     # Note that we are doing this after enforcing permissions, so we need to use the www-data user for this
     echo "... configuring default settings"
     sudo -u www-data /var/www/MISP/app/Console/cake Admin setSetting -q "MISP.redis_host" "$REDIS_FQDN"
-    sudo -u www-data /var/www/MISP/app/Console/cake Admin setSetting -q "MISP.baseurl" "$HOSTNAME"
+    sudo -u www-data /var/www/MISP/app/Console/cake Admin setSetting -q "MISP.baseurl" "$BASEURL"
     sudo -u www-data /var/www/MISP/app/Console/cake Admin setSetting -q "MISP.python_bin" $(which python3)
     sudo -u www-data /var/www/MISP/app/Console/cake Admin setSetting -q -f "MISP.ca_path" "/etc/ssl/certs/ca-certificates.crt"
     sudo -u www-data /var/www/MISP/app/Console/cake Admin setSetting -q "Plugin.ZeroMQ_redis_host" "$REDIS_FQDN"
@@ -125,15 +125,15 @@ init_user() {
 }
 
 apply_critical_fixes() {
-    sudo -u www-data /var/www/MISP/app/Console/cake Admin setSetting -q "MISP.external_baseurl" "${HOSTNAME}"
-    sudo -u www-data /var/www/MISP/app/Console/cake Admin setSetting -q "MISP.host_org_id" 1
+    sudo -u www-data /var/www/MISP/app/Console/cake Admin setSetting -q "MISP.external_baseurl" "${$BASEURL}"
+    sudo -u www-data /var/www/MISP/app/Console/cake Admin setSetting -q "MISP.host_org_id" "1"
     sudo -u www-data /var/www/MISP/app/Console/cake Admin setSetting -q "Plugin.Action_services_enable" false
     sudo -u www-data /var/www/MISP/app/Console/cake Admin setSetting -q "Plugin.Enrichment_hover_enable" false
     sudo -u www-data /var/www/MISP/app/Console/cake Admin setSetting -q "Plugin.Enrichment_hover_popover_only" false
     sudo -u www-data /var/www/MISP/app/Console/cake Admin setSetting -q "Security.csp_enforce" true
     sudo -u www-data php /var/www/MISP/tests/modify_config.php modify "{
         \"Security\": {
-            \"rest_client_baseurl\": \"${HOSTNAME}\"
+            \"rest_client_baseurl\": \"${BASEURL}\"
         }
     }" > /dev/null
     sudo -u www-data php /var/www/MISP/tests/modify_config.php modify "{
@@ -182,7 +182,7 @@ create_sync_servers() {
 
         # Skip sync server if we can
         echo "... searching sync server ${NAME}"
-        SERVER_ID=$(get_server ${HOSTNAME} ${ADMIN_KEY} ${NAME})
+        SERVER_ID=$(get_server ${BASEURL} ${ADMIN_KEY} ${NAME})
         if [[ -n "$SERVER_ID" ]]; then
             echo "... found existing sync server ${NAME} with id ${SERVER_ID}"
             continue
@@ -197,19 +197,19 @@ create_sync_servers() {
 
         # Get remote organization
         echo "... searching remote organization ${UUID}"
-        ORG_ID=$(get_organization ${HOSTNAME} ${ADMIN_KEY} ${UUID})
+        ORG_ID=$(get_organization ${BASEURL} ${ADMIN_KEY} ${UUID})
         if [[ -z "$ORG_ID" ]]; then
             # Add remote organization if missing
             echo "... adding missing organization ${UUID}"
-            add_organization ${HOSTNAME} ${ADMIN_KEY} ${NAME} false ${UUID} > /dev/null
-            ORG_ID=$(get_organization ${HOSTNAME} ${ADMIN_KEY} ${UUID})
+            add_organization ${BASEURL} ${ADMIN_KEY} ${NAME} false ${UUID} > /dev/null
+            ORG_ID=$(get_organization ${BASEURL} ${ADMIN_KEY} ${UUID})
         fi
 
         # Add sync server
         echo "... adding new sync server ${NAME} with organization id ${ORG_ID}"
         JSON_DATA=$(echo "${!DATA}" | jq --arg org_id ${ORG_ID} 'del(.remote_org_uuid) | . + {remote_org_id: $org_id}')
-        add_server ${HOSTNAME} ${ADMIN_KEY} "$JSON_DATA" > /dev/null
-    done   
+        add_server ${BASEURL} ${ADMIN_KEY} "$JSON_DATA" > /dev/null
+    done
 }
 
 

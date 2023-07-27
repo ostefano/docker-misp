@@ -51,7 +51,7 @@ services:
       # customize by replacing ${CUSTOM_PATH} with a path containing 'files/customize_misp.sh'
       # - "${CUSTOM_PATH}/:/custom/"
     environment:
-      - "HOSTNAME=${HOSTNAME}"
+      - "BASEURL=${BASEURL}"
       - "CRON_USER_ID=${CRON_USER_ID}"
       # standard settings
       - "ADMIN_EMAIL=${ADMIN_EMAIL}"
