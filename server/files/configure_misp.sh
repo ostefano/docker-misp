@@ -6,12 +6,16 @@ source /rest_client.sh
 [ -z "$GPG_PASSPHRASE" ] && GPG_PASSPHRASE="passphrase"
 [ -z "$REDIS_FQDN" ] && REDIS_FQDN="redis"
 [ -z "$MISP_MODULES_FQDN" ] && MISP_MODULES_FQDN="http://misp-modules"
+[ -z "$AUTOCONF_GPG" ] && AUTOCONF_GPG="true"
+[ -z "$AUTOCONF_ADMIN_KEY" ] && AUTOCONF_ADMIN_KEY="true"
+
 
 init_configuration(){
     # Note that we are doing this after enforcing permissions, so we need to use the www-data user for this
     echo "... configuring default settings"
-    sudo -u www-data /var/www/MISP/app/Console/cake Admin setSetting -q "MISP.redis_host" "$REDIS_FQDN"
     sudo -u www-data /var/www/MISP/app/Console/cake Admin setSetting -q "MISP.baseurl" "$HOSTNAME"
+    sudo -u www-data /var/www/MISP/app/Console/cake Admin setSetting -q "MISP.email" "${MISP_EMAIL-$ADMIN_EMAIL}"
+    sudo -u www-data /var/www/MISP/app/Console/cake Admin setSetting -q "MISP.redis_host" "$REDIS_FQDN"
     sudo -u www-data /var/www/MISP/app/Console/cake Admin setSetting -q "MISP.python_bin" $(which python3)
     sudo -u www-data /var/www/MISP/app/Console/cake Admin setSetting -q -f "MISP.ca_path" "/etc/ssl/certs/ca-certificates.crt"
     sudo -u www-data /var/www/MISP/app/Console/cake Admin setSetting -q "Plugin.ZeroMQ_redis_host" "$REDIS_FQDN"
@@ -92,22 +96,30 @@ apply_updates() {
 
 init_user() {
     # Create the main user if it is not there already
-    sudo -u www-data /var/www/MISP/app/Console/cake userInit -q 2>&1 > /dev/null
-    echo "... setting admin email to '${ADMIN_EMAIL}'"
-    sudo -u www-data /var/www/MISP/app/Console/cake Admin setSetting -q "MISP.email" ${ADMIN_EMAIL}
+    sudo -u www-data /var/www/MISP/app/Console/cake userInit -q > /dev/null 2>&1
+
+    # Set the email of the first user, default is admin@admin.test
     echo "UPDATE misp.users SET email = \"${ADMIN_EMAIL}\" WHERE id = 1;" | ${MYSQLCMD}
-    if [ ! -z "$ADMIN_ORG" ]; then
+
+    # Set the name of the "frist" org, default is "ORGNAME"
+    if [ -n "$ADMIN_ORG" ]; then
         echo "UPDATE misp.organisations SET name = \"${ADMIN_ORG}\" where id = 1;" | ${MYSQLCMD}
     fi
-    if [ ! -z "$ADMIN_KEY" ]; then
-        echo "... setting admin key to '${ADMIN_KEY}'"
-        CHANGE_CMD=(sudo -u www-data /var/www/MISP/app/Console/cake User change_authkey 1 "${ADMIN_KEY}")
+
+    if [ "$AUTOCONF_ADMIN_KEY" = "true" ]; then
+        if [ -n "$ADMIN_KEY" ]; then
+            echo "... setting admin key to '${ADMIN_KEY}'"
+            CHANGE_CMD=(sudo -u www-data /var/www/MISP/app/Console/cake User change_authkey 1 "${ADMIN_KEY}")
+        else
+            echo "... regenerating admin key (set \$ADMIN_KEY if you want it to change)"
+            CHANGE_CMD=(sudo -u www-data /var/www/MISP/app/Console/cake User change_authkey 1)
+        fi
+        ADMIN_KEY="$("${CHANGE_CMD[@]}" | awk 'END {print $NF; exit}')"
+        echo "... admin user key set to '${ADMIN_KEY}'"
     else
-        echo "... regenerating admin key (set \$ADMIN_KEY if you want it to change)"
-        CHANGE_CMD=(sudo -u www-data /var/www/MISP/app/Console/cake User change_authkey 1)
+        ADMIN_KEY=""
+        echo "... WARNING: admin user key auto configuration disabled, this will disable some automation!"
     fi
-    ADMIN_KEY=`${CHANGE_CMD[@]} | awk 'END {print $NF; exit}'`
-    echo "... admin user key set to '${ADMIN_KEY}'"
 
     if [ ! -z "$ADMIN_PASSWORD" ]; then
         echo "... setting admin password to '${ADMIN_PASSWORD}'"
@@ -146,11 +158,10 @@ apply_critical_fixes() {
 apply_optional_fixes() {
     sudo -u www-data /var/www/MISP/app/Console/cake Admin setSetting -q --force "MISP.welcome_text_top" ""
     sudo -u www-data /var/www/MISP/app/Console/cake Admin setSetting -q --force "MISP.welcome_text_bottom" ""
-    
-    sudo -u www-data /var/www/MISP/app/Console/cake Admin setSetting -q "MISP.contact" "${ADMIN_EMAIL}"
+    sudo -u www-data /var/www/MISP/app/Console/cake Admin setSetting -q "MISP.contact" "${MISP_CONTACT-$ADMIN_EMAIL}"
     # This is not necessary because we update the DB directly
     # sudo -u www-data /var/www/MISP/app/Console/cake Admin setSetting -q "MISP.org" "${ADMIN_ORG}"
-    
+
     sudo -u www-data /var/www/MISP/app/Console/cake Admin setSetting -q "MISP.log_client_ip" true
     sudo -u www-data /var/www/MISP/app/Console/cake Admin setSetting -q "MISP.log_user_ips" true
     sudo -u www-data /var/www/MISP/app/Console/cake Admin setSetting -q "MISP.log_user_ips_authkeys" true
@@ -209,7 +220,7 @@ create_sync_servers() {
         echo "... adding new sync server ${NAME} with organization id ${ORG_ID}"
         JSON_DATA=$(echo "${!DATA}" | jq --arg org_id ${ORG_ID} 'del(.remote_org_uuid) | . + {remote_org_id: $org_id}')
         add_server ${HOSTNAME} ${ADMIN_KEY} "$JSON_DATA" > /dev/null
-    done   
+    done
 }
 
 
@@ -217,7 +228,7 @@ echo "MISP | Initialize configuration ..." && init_configuration
 
 echo "MISP | Initialize workers ..." && init_workers
 
-echo "MISP | Configure GPG key ..." && configure_gnupg
+[ "$AUTOCONF_GPG" = "true" ] && echo "MISP | Configure GPG key ..." && configure_gnupg
 
 echo "MISP | Apply updates ..." && apply_updates
 
@@ -227,7 +238,9 @@ echo "MISP | Resolve critical issues ..." && apply_critical_fixes
 
 echo "MISP | Resolve non-critical issues ..." && apply_optional_fixes
 
-echo "MISP | Create sync servers ..." && create_sync_servers
+[ -z "$SYNCSERVERS" ] && echo "MISP | No sync servers to create ..."
+[ -n "$SYNCSERVERS" ] && [ -n "$ADMIN_KEY" ] && echo "MISP | Create sync servers ..." && create_sync_servers
+[ -n "$SYNCSERVERS" ] && [ -z "$ADMIN_KEY" ] && echo "MISP | ERROR: Can not create sync servers, admin key not avaliable ..." 1>&2
 
 echo "MISP | Update components ..." && update_components
 
