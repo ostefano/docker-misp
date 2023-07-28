@@ -79,7 +79,6 @@ GPGEOF
     sudo -u www-data /var/www/MISP/app/Console/cake Admin setSetting -q "GnuPG.email" "${ADMIN_EMAIL}"
     sudo -u www-data /var/www/MISP/app/Console/cake Admin setSetting -q "GnuPG.homedir" "${GPG_DIR}"
     sudo -u www-data /var/www/MISP/app/Console/cake Admin setSetting -q "GnuPG.password" "${GPG_PASSPHRASE}"
-    sudo -u www-data /var/www/MISP/app/Console/cake Admin setSetting -q "GnuPG.obscure_subject" false
     sudo -u www-data /var/www/MISP/app/Console/cake Admin setSetting -q "GnuPG.binary" "$(which gpg)"
 }
 
