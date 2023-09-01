@@ -201,7 +201,7 @@ FROM "${DOCKER_HUB_PROXY}debian:bullseye-slim"
         find /var/www/MISP -not -perm 550 -type f -exec chmod 0550 '{}' +; \
         find /var/www/MISP -not -perm 770 -type d -exec chmod 0770 '{}' +;
 
-    # Special sauce
+    # Copy all our image specific files to appropriate locations
     COPY files/ /
     ENTRYPOINT [ "/entrypoint.sh" ]
 
