@@ -1,13 +1,13 @@
 ARG DOCKER_HUB_PROXY=""
 
-FROM "${DOCKER_HUB_PROXY}debian:bullseye-slim" as composer-build
+FROM "${DOCKER_HUB_PROXY}debian:bullseye-slim" as build
     ENV DEBIAN_FRONTEND noninteractive
     ENV COMPOSER_ALLOW_SUPERUSER 1
     ARG MISP_TAG
     ARG MISP_COMMIT
     RUN apt-get update; apt-get install -y --no-install-recommends \
+        # Composer requirements
         ca-certificates \
-        php \
         php-apcu \
         php-curl \
         php-xml \
@@ -19,8 +19,32 @@ FROM "${DOCKER_HUB_PROXY}debian:bullseye-slim" as composer-build
         php-gd \
         php-fpm \
         php-zip \
+        # PHP requirements
+        g++ \
+        make \
+        php-dev \
+        php-pear \
+        librdkafka-dev \
+        libsimdjson-dev \
+        # Python requirements
+        python3 \
+        python3-dev \
+        python3-pip \
+        python3-setuptools \
+        python3-venv \
+        python3-wheel \
+        libffi-dev \
+        curl \
+        # Common requirements
+        gcc \
+        ca-certificates \
+        libfuzzy-dev \
+        php \
+        git \
         && apt-get autoremove -y && apt-get clean -y && rm -rf /var/lib/apt/lists/*
     
+    # Composer build
+
     WORKDIR /tmp
     ADD https://raw.githubusercontent.com/MISP/MISP/${MISP_COMMIT:-${MISP_TAG}}/app/composer.json /tmp
     COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
@@ -37,43 +61,14 @@ FROM "${DOCKER_HUB_PROXY}debian:bullseye-slim" as composer-build
             jakub-onderka/openid-connect-php:^1.0.0 \
             aws/aws-sdk-php
 
-FROM "${DOCKER_HUB_PROXY}debian:bullseye-slim" as php-build
-    ENV DEBIAN_FRONTEND noninteractive
-    RUN apt-get update; apt-get install -y --no-install-recommends \
-        gcc \
-        g++ \
-        make \
-        libfuzzy-dev \
-        ca-certificates \
-        php \
-        php-dev \
-        php-pear \
-        librdkafka-dev \
-        libsimdjson-dev \
-        git \
-        && apt-get autoremove -y && apt-get clean -y && rm -rf /var/lib/apt/lists/*
+    # PHP build
 
     RUN pecl channel-update pecl.php.net
     RUN cp "/usr/lib/$(gcc -dumpmachine)"/libfuzzy.* /usr/lib; pecl install ssdeep && pecl install rdkafka && pecl install simdjson
     RUN git clone --recursive --depth=1 https://github.com/kjdev/php-ext-brotli.git && \
         cd php-ext-brotli && phpize && ./configure && make && make install
 
-FROM "${DOCKER_HUB_PROXY}debian:bullseye-slim" as python-build
-    ENV DEBIAN_FRONTEND noninteractive
-    RUN apt-get update; apt-get install -y --no-install-recommends \
-        gcc \
-        git \
-        python3 \
-        python3-dev \
-        python3-pip \
-        python3-setuptools \
-        python3-venv \
-        python3-wheel \
-        libfuzzy-dev \
-        libffi-dev \
-        ca-certificates \
-        curl \
-        && apt-get autoremove -y && apt-get clean -y && rm -rf /var/lib/apt/lists/*
+    # Python build
 
     RUN mkdir /wheels
 
@@ -175,18 +170,18 @@ FROM "${DOCKER_HUB_PROXY}debian:bullseye-slim"
         rm -rf /var/www/MISP/INSTALL/old
 
     # Python Modules
-    COPY --from=python-build /wheels /wheels
+    COPY --from=build /wheels /wheels
     RUN pip3 install --no-cache-dir /wheels/*.whl && rm -rf /wheels
 
     # PHP: install prebuilt libraries, then install the app's PHP deps
-    COPY --from=php-build /usr/lib/php/${PHP_VER}/ssdeep.so /usr/lib/php/${PHP_VER}/ssdeep.so
-    COPY --from=php-build /usr/lib/php/${PHP_VER}/rdkafka.so /usr/lib/php/${PHP_VER}/rdkafka.so
-    COPY --from=php-build /usr/lib/php/${PHP_VER}/brotli.so /usr/lib/php/${PHP_VER}/brotli.so
-    COPY --from=php-build /usr/lib/php/${PHP_VER}/simdjson.so /usr/lib/php/${PHP_VER}/simdjson.so
+    COPY --from=build /usr/lib/php/${PHP_VER}/ssdeep.so /usr/lib/php/${PHP_VER}/ssdeep.so
+    COPY --from=build /usr/lib/php/${PHP_VER}/rdkafka.so /usr/lib/php/${PHP_VER}/rdkafka.so
+    COPY --from=build /usr/lib/php/${PHP_VER}/brotli.so /usr/lib/php/${PHP_VER}/brotli.so
+    COPY --from=build /usr/lib/php/${PHP_VER}/simdjson.so /usr/lib/php/${PHP_VER}/simdjson.so
 
     # Do an early chown to limit image size
-    COPY --from=composer-build --chown=www-data:www-data /tmp/Vendor /var/www/MISP/app/Vendor
-    COPY --from=composer-build --chown=www-data:www-data /tmp/Plugin /var/www/MISP/app/Plugin
+    COPY --from=build --chown=www-data:www-data /tmp/Vendor /var/www/MISP/app/Vendor
+    COPY --from=build --chown=www-data:www-data /tmp/Plugin /var/www/MISP/app/Plugin
 
     RUN for dir in /etc/php/*; do echo "extension=ssdeep.so" > "$dir/mods-available/ssdeep.ini"; done; phpenmod ssdeep
     RUN for dir in /etc/php/*; do echo "extension=rdkafka.so" > "$dir/mods-available/rdkafka.ini"; done; phpenmod rdkafka
