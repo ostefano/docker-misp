@@ -26,6 +26,7 @@ FROM "${DOCKER_HUB_PROXY}debian:bullseye-slim" as build
         php-pear \
         librdkafka-dev \
         libsimdjson-dev \
+        unzip \
         # Python requirements
         python3 \
         python3-dev \
@@ -164,24 +165,20 @@ FROM "${DOCKER_HUB_PROXY}debian:bullseye-slim"
     # Download MISP using git in the /var/www/ directory.
     RUN if [ ! -z ${MISP_COMMIT} ]; then \
         git clone https://github.com/MISP/MISP.git /var/www/MISP && cd /var/www/MISP && git checkout ${MISP_COMMIT}; \
-        else git clone --branch ${MISP_TAG} --depth 1 https://github.com/MISP/MISP.git /var/www/MISP; fi
-    RUN cd /var/www/MISP; git submodule update --init --recursive .; cd /var/www/MISP/app; \
-        # Remove some old and broken links that pollute the log files
-        rm -rf /var/www/MISP/INSTALL/old
-
+        else git clone --branch ${MISP_TAG} --depth 1 https://github.com/MISP/MISP.git /var/www/MISP; fi; \
+        cd /var/www/MISP; git submodule update --init --recursive .; cd /var/www/MISP/app; \
+        rm -rf /var/www/MISP/INSTALL/old; \
+        rm -rf /var/www/MISP/.git
+    
     # Python Modules
     COPY --from=build /wheels /wheels
     RUN pip3 install --no-cache-dir /wheels/*.whl && rm -rf /wheels
 
     # PHP: install prebuilt libraries, then install the app's PHP deps
-    COPY --from=build /usr/lib/php/${PHP_VER}/ssdeep.so /usr/lib/php/${PHP_VER}/ssdeep.so
-    COPY --from=build /usr/lib/php/${PHP_VER}/rdkafka.so /usr/lib/php/${PHP_VER}/rdkafka.so
-    COPY --from=build /usr/lib/php/${PHP_VER}/brotli.so /usr/lib/php/${PHP_VER}/brotli.so
-    COPY --from=build /usr/lib/php/${PHP_VER}/simdjson.so /usr/lib/php/${PHP_VER}/simdjson.so
+    COPY --from=build ["/usr/lib/php/${PHP_VER}/ssdeep.so", "/usr/lib/php/${PHP_VER}/rdkafka.so", "/usr/lib/php/${PHP_VER}/brotli.so", "/usr/lib/php/${PHP_VER}/simdjson.so", "/usr/lib/php/${PHP_VER}/"]
 
     # Do an early chown to limit image size
-    COPY --from=build --chown=www-data:www-data /tmp/Vendor /var/www/MISP/app/Vendor
-    COPY --from=build --chown=www-data:www-data /tmp/Plugin /var/www/MISP/app/Plugin
+    COPY --from=build --chown=www-data:www-data ["/tmp/Vendor/","/tmp/Plugin/", "/var/www/MISP/app/"]
 
     RUN for dir in /etc/php/*; do echo "extension=ssdeep.so" > "$dir/mods-available/ssdeep.ini"; done; phpenmod ssdeep
     RUN for dir in /etc/php/*; do echo "extension=rdkafka.so" > "$dir/mods-available/rdkafka.ini"; done; phpenmod rdkafka
@@ -191,8 +188,6 @@ FROM "${DOCKER_HUB_PROXY}debian:bullseye-slim"
 
     # nginx
     RUN rm /etc/nginx/sites-enabled/*; mkdir /run/php /etc/nginx/certs
-    COPY files/etc/nginx/misp /etc/nginx/sites-available/misp
-    COPY files/etc/nginx/misp80 /etc/nginx/sites-available/misp80
 
     # Make a copy of the file and configuration stores, so we can sync from it
     RUN cp -R /var/www/MISP/app/files /var/www/MISP/app/files.dist; \
@@ -206,16 +201,8 @@ FROM "${DOCKER_HUB_PROXY}debian:bullseye-slim"
         find /var/www/MISP -not -perm 550 -type f -exec chmod 0550 '{}' +; \
         find /var/www/MISP -not -perm 770 -type d -exec chmod 0770 '{}' +;
 
-    # Entrypoints
-    COPY files/etc/supervisor/supervisor.conf /etc/supervisor/conf.d/10-supervisor.conf
-    COPY files/etc/supervisor/workers.conf /etc/supervisor/conf.d/50-workers.conf
-    COPY files/var/www/html/index.php /var/www/html/index.php
-    COPY files/configure_misp.sh /
-    COPY files/rest_client.sh /
-    COPY files/entrypoint_fpm.sh /
-    COPY files/entrypoint_nginx.sh /
-    COPY files/entrypoint_cron.sh /
-    COPY files/entrypoint.sh /
+    # Special sauce
+    COPY files/ /
     ENTRYPOINT [ "/entrypoint.sh" ]
 
     # Change Workdirectory
