@@ -1,13 +1,13 @@
 ARG DOCKER_HUB_PROXY=""
 
-FROM "${DOCKER_HUB_PROXY}debian:bullseye-slim" as build
+FROM "${DOCKER_HUB_PROXY}debian:bullseye-slim" as composer-build
     ENV DEBIAN_FRONTEND noninteractive
     ENV COMPOSER_ALLOW_SUPERUSER 1
     ARG MISP_TAG
     ARG MISP_COMMIT
     RUN apt-get update; apt-get install -y --no-install-recommends \
-        # Composer requirements
         ca-certificates \
+        php \
         php-apcu \
         php-curl \
         php-xml \
@@ -19,33 +19,8 @@ FROM "${DOCKER_HUB_PROXY}debian:bullseye-slim" as build
         php-gd \
         php-fpm \
         php-zip \
-        # PHP requirements
-        g++ \
-        make \
-        php-dev \
-        php-pear \
-        librdkafka-dev \
-        libsimdjson-dev \
-        unzip \
-        # Python requirements
-        python3 \
-        python3-dev \
-        python3-pip \
-        python3-setuptools \
-        python3-venv \
-        python3-wheel \
-        libffi-dev \
-        curl \
-        # Common requirements
-        gcc \
-        ca-certificates \
-        libfuzzy-dev \
-        php \
-        git \
         && apt-get autoremove -y && apt-get clean -y && rm -rf /var/lib/apt/lists/*
     
-    # Composer build
-
     WORKDIR /tmp
     ADD https://raw.githubusercontent.com/MISP/MISP/${MISP_COMMIT:-${MISP_TAG}}/app/composer.json /tmp
     COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
@@ -56,20 +31,49 @@ FROM "${DOCKER_HUB_PROXY}debian:bullseye-slim" as build
             guzzlehttp/guzzle \
             lstrojny/fxmlrpc \
             php-http/message \
-            php-http/message-factory
-    RUN composer require --with-all-dependencies \
+            php-http/message-factory \
+    #RUN composer require --with-all-dependencies \
             elasticsearch/elasticsearch:^8.7.0 \
             jakub-onderka/openid-connect-php:^1.0.0 \
             aws/aws-sdk-php
 
-    # PHP build
+FROM "${DOCKER_HUB_PROXY}debian:bullseye-slim" as php-build
+    ENV DEBIAN_FRONTEND noninteractive
+    RUN apt-get update; apt-get install -y --no-install-recommends \
+        gcc \
+        g++ \
+        make \
+        libfuzzy-dev \
+        ca-certificates \
+        php \
+        php-dev \
+        php-pear \
+        librdkafka-dev \
+        libsimdjson-dev \
+        git \
+        && apt-get autoremove -y && apt-get clean -y && rm -rf /var/lib/apt/lists/*
 
     RUN pecl channel-update pecl.php.net
     RUN cp "/usr/lib/$(gcc -dumpmachine)"/libfuzzy.* /usr/lib; pecl install ssdeep && pecl install rdkafka && pecl install simdjson
     RUN git clone --recursive --depth=1 https://github.com/kjdev/php-ext-brotli.git && \
         cd php-ext-brotli && phpize && ./configure && make && make install
 
-    # Python build
+FROM "${DOCKER_HUB_PROXY}debian:bullseye-slim" as python-build
+    ENV DEBIAN_FRONTEND noninteractive
+    RUN apt-get update; apt-get install -y --no-install-recommends \
+        gcc \
+        git \
+        python3 \
+        python3-dev \
+        python3-pip \
+        python3-setuptools \
+        python3-venv \
+        python3-wheel \
+        libfuzzy-dev \
+        libffi-dev \
+        ca-certificates \
+        curl \
+        && apt-get autoremove -y && apt-get clean -y && rm -rf /var/lib/apt/lists/*
 
     RUN mkdir /wheels
 
@@ -77,38 +81,38 @@ FROM "${DOCKER_HUB_PROXY}debian:bullseye-slim" as build
 
     RUN git clone --depth 1 https://github.com/CybOXProject/mixbox.git; \
         cd mixbox || exit; python3 setup.py bdist_wheel -d /wheels; \
-        sed -i 's/-e //g' requirements.txt; pip3 wheel -r requirements.txt --no-cache-dir -w /wheels/
+        sed -i 's/-e //g' requirements.txt; pip3 wheel -r requirements.txt --no-cache-dir -w /wheels/ && cd .. && rm -rf mixbox
 
     # install python-maec
     RUN git clone --depth 1 https://github.com/MAECProject/python-maec.git; \
-        cd python-maec || exit; python3 setup.py bdist_wheel -d /wheels
+        cd python-maec || exit; python3 setup.py bdist_wheel -d /wheels && cd .. && rm -rf python-maec
 
     # install python-cybox
     RUN git clone --depth 1 https://github.com/CybOXProject/python-cybox.git; \
         cd python-cybox || exit; python3 setup.py bdist_wheel -d /wheels; \
-        sed -i 's/-e //g' requirements.txt; pip3 wheel -r requirements.txt --no-cache-dir -w /wheels/
+        sed -i 's/-e //g' requirements.txt; pip3 wheel -r requirements.txt --no-cache-dir -w /wheels/ && cd .. && rm -rf python-cybox
 
     # install python stix
     RUN git clone --depth 1 https://github.com/STIXProject/python-stix.git; \
         cd python-stix || exit; python3 setup.py bdist_wheel -d /wheels; \
-        sed -i 's/-e //g' requirements.txt; pip3 wheel -r requirements.txt --no-cache-dir -w /wheels/
+        sed -i 's/-e //g' requirements.txt; pip3 wheel -r requirements.txt --no-cache-dir -w /wheels/ && cd .. && rm -rf python-stix
 
     # install STIX2.0 library to support STIX 2.0 export:
     # Original Requirements has a bunch of non-required pacakges, force it to only grab wheels for deps from setup.py
     RUN git clone --depth 1 https://github.com/MISP/cti-python-stix2.git; \
         cd cti-python-stix2 || exit; python3 setup.py bdist_wheel -d /wheels; \
-        echo "-e ." > requirements.txt; pip3 wheel -r requirements.txt --no-cache-dir -w /wheels/
+        echo "-e ." > requirements.txt; pip3 wheel -r requirements.txt --no-cache-dir -w /wheels/ && cd .. && rm -rf cti-python-stix2
 
     # Install the new build tool
     RUN pip3 install build
 
     # install PyMISP
     RUN git clone --depth 1 https://github.com/MISP/PyMISP.git; \
-        cd PyMISP || exit; python3 -m build --wheel --outdir /wheels
+        cd PyMISP || exit; python3 -m build --wheel --outdir /wheels && cd .. && rm -rf PyMISP
 
     # install pydeep2 (drop-in replacement for pydeep)
     RUN git clone --depth 1 https://github.com/JakubOnderka/pydeep.git; \
-        cd pydeep || exit; python3 setup.py bdist_wheel -d /wheels
+        cd pydeep || exit; python3 setup.py bdist_wheel -d /wheels && cd .. && rm -rf pydeep
 
     # Grab other modules we need
     RUN pip3 wheel --no-cache-dir -w /wheels/ plyara pyzmq redis python-magic lief>=0.13.1
@@ -169,16 +173,16 @@ FROM "${DOCKER_HUB_PROXY}debian:bullseye-slim"
         cd /var/www/MISP; git submodule update --init --recursive .; cd /var/www/MISP/app; \
         rm -rf /var/www/MISP/INSTALL/old; \
         rm -rf /var/www/MISP/.git
-    
+
     # Python Modules
-    COPY --from=build /wheels /wheels
+    COPY --from=python-build /wheels /wheels
     RUN pip3 install --no-cache-dir /wheels/*.whl && rm -rf /wheels
 
     # PHP: install prebuilt libraries, then install the app's PHP deps
-    COPY --from=build ["/usr/lib/php/${PHP_VER}/ssdeep.so", "/usr/lib/php/${PHP_VER}/rdkafka.so", "/usr/lib/php/${PHP_VER}/brotli.so", "/usr/lib/php/${PHP_VER}/simdjson.so", "/usr/lib/php/${PHP_VER}/"]
+    COPY --from=php-build ["/usr/lib/php/${PHP_VER}/ssdeep.so", "/usr/lib/php/${PHP_VER}/rdkafka.so", "/usr/lib/php/${PHP_VER}/brotli.so", "/usr/lib/php/${PHP_VER}/simdjson.so", "/usr/lib/php/${PHP_VER}/"]
 
     # Do an early chown to limit image size
-    COPY --from=build --chown=www-data:www-data ["/tmp/Vendor/","/tmp/Plugin/", "/var/www/MISP/app/"]
+    COPY --from=composer-build --chown=www-data:www-data ["/tmp/Vendor/","/tmp/Plugin/", "/var/www/MISP/app/"]
 
     RUN for dir in /etc/php/*; do echo "extension=ssdeep.so" > "$dir/mods-available/ssdeep.ini"; done; phpenmod ssdeep
     RUN for dir in /etc/php/*; do echo "extension=rdkafka.so" > "$dir/mods-available/rdkafka.ini"; done; phpenmod rdkafka
