@@ -166,11 +166,12 @@ FROM "${DOCKER_HUB_PROXY}debian:bullseye-slim"
         curl jq \
         && apt-get autoremove -y && apt-get clean -y && rm -rf /var/lib/apt/lists/*
 
-    # Download MISP using git in the /var/www/ directory.
+    # Download MISP using git in the /var/www/ directory. Remove unnecessary items.
     RUN if [ ! -z ${MISP_COMMIT} ]; then \
         git clone https://github.com/MISP/MISP.git /var/www/MISP && cd /var/www/MISP && git checkout ${MISP_COMMIT}; \
         else git clone --branch ${MISP_TAG} --depth 1 https://github.com/MISP/MISP.git /var/www/MISP; fi; \
-        cd /var/www/MISP; git submodule update --init --recursive .; cd /var/www/MISP/app; \
+        cd /var/www/MISP; git -c submodule."PyMISP".update=none submodule update --init --recursive .; cd /var/www/MISP/app; \
+        rm -f /var/www/MISP/PyMISP; \
         rm -rf /var/www/MISP/INSTALL/old; \
         rm -rf /var/www/MISP/.git
 
@@ -184,11 +185,14 @@ FROM "${DOCKER_HUB_PROXY}debian:bullseye-slim"
     # Do an early chown to limit image size
     COPY --from=composer-build --chown=www-data:www-data ["/tmp/Vendor/","/tmp/Plugin/", "/var/www/MISP/app/"]
 
-    RUN for dir in /etc/php/*; do echo "extension=ssdeep.so" > "$dir/mods-available/ssdeep.ini"; done; phpenmod ssdeep
-    RUN for dir in /etc/php/*; do echo "extension=rdkafka.so" > "$dir/mods-available/rdkafka.ini"; done; phpenmod rdkafka
-    RUN for dir in /etc/php/*; do echo "extension=brotli.so" > "$dir/mods-available/brotli.ini"; done; phpenmod brotli
-    RUN for dir in /etc/php/*; do echo "extension=simdjson.so" > "$dir/mods-available/simdjson.ini"; done; phpenmod simdjson
-    RUN phpenmod redis
+    # Gather these in one layer, only act on actual directories under /etc/php/
+    RUN for mod in {"ssdeep","rdkafka","brotli","simdjson"}; do \
+        for dir in/etc/php/*/; do \
+            echo "extension=${mod}.so" > "${dir}/mods-available/${mod}.ini" \
+        done; \
+        phpenmod ${mod} \
+    done; \
+    phpenmod redis
 
     # nginx
     RUN rm /etc/nginx/sites-enabled/*; mkdir /run/php /etc/nginx/certs
