@@ -1,24 +1,27 @@
 ARG DOCKER_HUB_PROXY=""
 
-FROM "${DOCKER_HUB_PROXY}debian:bullseye-slim" as composer-build
+# PHP7.4 explicitly because of ssdeep being incompatible with PHP 8.2
+FROM "${DOCKER_HUB_PROXY}ubuntu:22.04" as composer-build
     ENV DEBIAN_FRONTEND noninteractive
     ENV COMPOSER_ALLOW_SUPERUSER 1
     ARG MISP_TAG
     ARG MISP_COMMIT
+    RUN apt-get update && apt-get install -y --no-install-recommends gpg-agent software-properties-common && add-apt-repository -y ppa:ondrej/php \
+        && apt-get autoremove -y && apt-get clean -y && rm -rf /var/lib/apt/lists/*
     RUN apt-get update; apt-get install -y --no-install-recommends \
         ca-certificates \
-        php \
-        php-apcu \
-        php-curl \
-        php-xml \
-        php-intl \
-        php-bcmath \
-        php-mbstring \
-        php-mysql \
-        php-redis \
-        php-gd \
-        php-fpm \
-        php-zip \
+        php7.4 \
+        php7.4-apcu \
+        php7.4-curl \
+        php7.4-xml \
+        php7.4-intl \
+        php7.4-bcmath \
+        php7.4-mbstring \
+        php7.4-mysql \
+        php7.4-redis \
+        php7.4-gd \
+        php7.4-fpm \
+        php7.4-zip \
         unzip \
         && apt-get autoremove -y && apt-get clean -y && rm -rf /var/lib/apt/lists/*
     
@@ -37,41 +40,46 @@ FROM "${DOCKER_HUB_PROXY}debian:bullseye-slim" as composer-build
             jakub-onderka/openid-connect-php:^1.0.0 \
             aws/aws-sdk-php
 
-FROM "${DOCKER_HUB_PROXY}debian:bullseye-slim" as php-build
+FROM "${DOCKER_HUB_PROXY}ubuntu:22.04" as php-build
     ENV DEBIAN_FRONTEND noninteractive
+    ENV TZ Etc/UTC
+    RUN apt-get update && apt-get install -y --no-install-recommends gpg-agent software-properties-common && add-apt-repository -y ppa:ondrej/php \
+        && apt-get autoremove -y && apt-get clean -y && rm -rf /var/lib/apt/lists/*
     RUN apt-get update; apt-get install -y --no-install-recommends \
         gcc \
         g++ \
         make \
         libfuzzy-dev \
         ca-certificates \
-        php \
-        php-dev \
+        php7.4 \
+        php7.4-dev \
+        php7.4-xml \
         php-pear \
         librdkafka-dev \
         libsimdjson-dev \
         git \
         && apt-get autoremove -y && apt-get clean -y && rm -rf /var/lib/apt/lists/*
-
-    RUN pecl channel-update pecl.php.net
+    # php-pear depends on PHP 8.2, so we need to switch back to php-7.4 after installing it
+    RUN update-alternatives --set php /usr/bin/php7.4 && pecl channel-update pecl.php.net
     RUN cp "/usr/lib/$(gcc -dumpmachine)"/libfuzzy.* /usr/lib; pecl install ssdeep && pecl install rdkafka && pecl install simdjson
     RUN git clone --recursive --depth=1 https://github.com/kjdev/php-ext-brotli.git && \
         cd php-ext-brotli && phpize && ./configure && make && make install
 
-FROM "${DOCKER_HUB_PROXY}debian:bullseye-slim" as python-build
+FROM "${DOCKER_HUB_PROXY}ubuntu:22.04" as python-build
     ENV DEBIAN_FRONTEND noninteractive
     RUN apt-get update; apt-get install -y --no-install-recommends python3-pip && apt-get autoremove -y && apt-get clean -y && rm -rf /var/lib/apt/lists/*
-
     RUN mkdir /wheels
 
-    # Grab modules we need
+    # Grab module wheels we need
     RUN pip3 wheel --no-cache-dir -w /wheels/ plyara pyzmq redis python-magic lief>=0.13.1 pymisp pydeep2 misp-lib-stix2 stix cybox maec mixbox
 
-FROM "${DOCKER_HUB_PROXY}debian:bullseye-slim"
+FROM "${DOCKER_HUB_PROXY}ubuntu:22.04"
     ENV DEBIAN_FRONTEND noninteractive
     ARG MISP_TAG
     ARG MISP_COMMIT
     ARG PHP_VER
+    RUN apt-get update && apt-get install -y gpg-agent software-properties-common && add-apt-repository -y ppa:ondrej/php \
+        && apt-get autoremove -y && apt-get clean -y && rm -rf /var/lib/apt/lists/*
     RUN apt-get update; apt-get install -y --no-install-recommends \
         procps \
         sudo \
@@ -80,7 +88,7 @@ FROM "${DOCKER_HUB_PROXY}debian:bullseye-slim"
         git \
         cron \
         openssl \
-        gpg-agent gpg \
+        gpg \
         ssdeep \
         libfuzzy2 \
         mariadb-client \
@@ -90,21 +98,21 @@ FROM "${DOCKER_HUB_PROXY}debian:bullseye-slim"
         python3-setuptools \
         python3-pip \
         # PHP Requirements
-        php \
-        php-apcu \
-        php-curl \
-        php-xml \
-        php-intl \
-        php-bcmath \
-        php-mbstring \
-        php-mysql \
-        php-redis \
-        php-gd \
-        php-fpm \
-        php-zip \
+        php7.4 \
+        php7.4-apcu \
+        php7.4-curl \
+        php7.4-xml \
+        php7.4-intl \
+        php7.4-bcmath \
+        php7.4-mbstring \
+        php7.4-mysql \
+        php7.4-redis \
+        php7.4-gd \
+        php7.4-fpm \
+        php7.4-zip \
         librdkafka1 \
         libbrotli1 \
-        libsimdjson5 \
+        libsimdjson9 \
         # Unsure we need these
         zip unzip \
         # Require for advanced an unattended configuration
@@ -120,7 +128,8 @@ FROM "${DOCKER_HUB_PROXY}debian:bullseye-slim"
             fi
             cd /var/www/MISP || exit; git -c submodule."PyMISP".update=none submodule update --init --recursive .
             rm -r /var/www/MISP/PyMISP
-            rm -rf /var/www/MISP/INSTALL/old
+            find /var/www/MISP/INSTALL/* ! -name 'MYSQL.sql' -type f -exec rm {} +
+            find /var/www/MISP/INSTALL/* ! -name 'MYSQL.sql' -type l -exec rm {} +
             rm -rf /var/www/MISP/.git
             mkdir -p /var/www/MISP/app/Vendor && mkdir -p /var/www/MISP/app/Plugin
 EOF
