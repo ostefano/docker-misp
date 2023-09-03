@@ -27,20 +27,21 @@ FROM "${DOCKER_HUB_PROXY}python:3.11-slim-bullseye" as python-build
             else
                 git clone --branch ${MODULES_TAG} --depth 1 https://github.com/MISP/misp-modules.git /srv/misp-modules
             fi
-EOF
 
-    RUN cd /srv/misp-modules; \
-        echo "pyeti" >> REQUIREMENTS; \
-        echo "greynoise" >> REQUIREMENTS; \
-        echo "git+https://github.com/abenassi/Google-Search-API" >> REQUIREMENTS; \
-        sed -i 's|apiosintds.*|git+https://github.com/davidonzo/apiosintDS\@misp|g' REQUIREMENTS; \
-        sed -i 's/-e //g' REQUIREMENTS; \
-        pip3 wheel -r REQUIREMENTS --no-cache-dir -w /wheels/
+            cd /srv/misp-modules
+            echo "pyeti" >> REQUIREMENTS
+            echo "greynoise" >> REQUIREMENTS
+            echo "git+https://github.com/abenassi/Google-Search-API" >> REQUIREMENTS
+            sed -i 's|apiosintds.*|git+https://github.com/davidonzo/apiosintDS\@misp|g' REQUIREMENTS
+            sed -i 's/-e //g' REQUIREMENTS
+            pip3 wheel -r REQUIREMENTS --no-cache-dir -w /wheels/
+            rm -rf /srv/misp-modules
+EOF
 
     # Build libfaup and wheel without dependencies (will break if faup ever adds anything but chardet that we don't satisfy above)
     RUN git clone --depth 1 https://github.com/stricaud/faup.git /srv/faup; \
         cd /srv/faup/build || exit; cmake -G "Ninja" ../ && ninja && ninja install; \
-        cd /srv/faup/src/lib/bindings/python || exit; pip3 wheel --no-cache-dir --no-dependencies -w /wheels/ .
+        cd /srv/faup/src/lib/bindings/python || exit; pip3 wheel --no-cache-dir --no-dependencies -w /wheels/ . && rm -rf /srv/faup
 
 FROM "${DOCKER_HUB_PROXY}python:3.11-slim-bullseye"
     ENV DEBIAN_FRONTEND noninteractive
