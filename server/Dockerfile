@@ -117,6 +117,7 @@ FROM "${DOCKER_HUB_PROXY}debian:bullseye-slim"
         cron \
         openssl \
         gpg \
+        gpg-agent \
         ssdeep \
         libfuzzy2 \
         mariadb-client \
