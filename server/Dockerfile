@@ -42,9 +42,6 @@ FROM "${DOCKER_HUB_PROXY}debian:bullseye-slim" as composer-build
 FROM "${DOCKER_HUB_PROXY}debian:bullseye-slim" as php-build
     ENV DEBIAN_FRONTEND noninteractive
     ENV TZ Etc/UTC
-    RUN apt-get update && apt-get install -y --no-install-recommends gpg-agent software-properties-common && add-apt-repository -y ppa:ondrej/php \
-        && apt-get autoremove -y && apt-get clean -y && rm -rf /var/lib/apt/lists/*
-
     RUN apt-get update; apt-get install -y --no-install-recommends \
         gcc \
         g++ \
