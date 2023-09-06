@@ -80,7 +80,8 @@ FROM "${DOCKER_HUB_PROXY}debian:bullseye-slim" as python-build
             # Remove modules only used during MISP build
             set -- 'coveralls' 'codecov$' 'requests-mock' 'nose'
             for mod in "$@"; do
-                sed "/{$mod}/d" -i /var/www/MISP/requirements.txt
+                echo ${mod}
+                sed "/${mod}/d" -i /var/www/MISP/requirements.txt
             done;
 
             # Add additional dependencies (container specific)
