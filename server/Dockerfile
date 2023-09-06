@@ -1,14 +1,11 @@
 ARG DOCKER_HUB_PROXY=""
 
-# PHP7.4 explicitly because of ssdeep being incompatible with PHP 8.2
 FROM "${DOCKER_HUB_PROXY}debian:bullseye-slim" as composer-build
 
     ENV DEBIAN_FRONTEND noninteractive
     ENV COMPOSER_ALLOW_SUPERUSER 1
     ARG MISP_TAG
     ARG MISP_COMMIT
-    RUN apt-get update && apt-get install -y --no-install-recommends gpg-agent software-properties-common && add-apt-repository -y ppa:ondrej/php \
-        && apt-get autoremove -y && apt-get clean -y && rm -rf /var/lib/apt/lists/*
     RUN apt-get update; apt-get install -y --no-install-recommends \
         ca-certificates \
         php \
