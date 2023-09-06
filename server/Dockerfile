@@ -101,9 +101,6 @@ FROM "${DOCKER_HUB_PROXY}debian:bullseye-slim" as python-build
             mkdir -p /var/www/MISP/app/Vendor && mkdir -p /var/www/MISP/app/Plugin
 EOF
 
-    # Grab module wheels we need
-    RUN pip3 wheel --no-cache-dir -w /wheels/ plyara pyzmq redis python-magic lief>=0.13.1 pymisp pydeep2 misp-lib-stix2 stix cybox maec mixbox
-
 FROM "${DOCKER_HUB_PROXY}debian:bullseye-slim"
 
     ENV DEBIAN_FRONTEND noninteractive
