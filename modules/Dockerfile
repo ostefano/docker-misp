@@ -39,7 +39,6 @@ FROM "${DOCKER_HUB_PROXY}python:3.11-slim-bullseye" as python-build
             rm -rf /srv/misp-modules
 EOF
 
-    # Build libfaup and wheel without dependencies (will break if faup ever adds anything but chardet that we don't satisfy above)
     RUN <<-EOF
         git clone --depth 1 https://github.com/stricaud/faup.git /srv/faup
         cd /srv/faup
