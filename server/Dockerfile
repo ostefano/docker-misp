@@ -1,7 +1,7 @@
 ARG DOCKER_HUB_PROXY=""
 
 # PHP7.4 explicitly because of ssdeep being incompatible with PHP 8.2
-FROM "${DOCKER_HUB_PROXY}ubuntu:22.04" as composer-build
+FROM "${DOCKER_HUB_PROXY}debian:bullseye-slim" as composer-build
 
     ENV DEBIAN_FRONTEND noninteractive
     ENV COMPOSER_ALLOW_SUPERUSER 1
@@ -11,18 +11,18 @@ FROM "${DOCKER_HUB_PROXY}ubuntu:22.04" as composer-build
         && apt-get autoremove -y && apt-get clean -y && rm -rf /var/lib/apt/lists/*
     RUN apt-get update; apt-get install -y --no-install-recommends \
         ca-certificates \
-        php7.4 \
-        php7.4-apcu \
-        php7.4-curl \
-        php7.4-xml \
-        php7.4-intl \
-        php7.4-bcmath \
-        php7.4-mbstring \
-        php7.4-mysql \
-        php7.4-redis \
-        php7.4-gd \
-        php7.4-fpm \
-        php7.4-zip \
+        php \
+        php-apcu \
+        php-curl \
+        php-xml \
+        php-intl \
+        php-bcmath \
+        php-mbstring \
+        php-mysql \
+        php-redis \
+        php-gd \
+        php-fpm \
+        php-zip \
         unzip \
         && apt-get autoremove -y && apt-get clean -y && rm -rf /var/lib/apt/lists/*
     
@@ -37,11 +37,12 @@ FROM "${DOCKER_HUB_PROXY}ubuntu:22.04" as composer-build
             lstrojny/fxmlrpc \
             php-http/message \
             php-http/message-factory \
+            # docker image specific dependencies
             elasticsearch/elasticsearch:^8.7.0 \
             jakub-onderka/openid-connect-php:^1.0.0 \
             aws/aws-sdk-php
 
-FROM "${DOCKER_HUB_PROXY}ubuntu:22.04" as php-build
+FROM "${DOCKER_HUB_PROXY}debian:bullseye-slim" as php-build
     ENV DEBIAN_FRONTEND noninteractive
     ENV TZ Etc/UTC
     RUN apt-get update && apt-get install -y --no-install-recommends gpg-agent software-properties-common && add-apt-repository -y ppa:ondrej/php \
@@ -53,36 +54,68 @@ FROM "${DOCKER_HUB_PROXY}ubuntu:22.04" as php-build
         make \
         libfuzzy-dev \
         ca-certificates \
-        php7.4 \
-        php7.4-dev \
-        php7.4-xml \
+        php \
+        php-dev \
+        php-xml \
         php-pear \
         librdkafka-dev \
         libsimdjson-dev \
         git \
         && apt-get autoremove -y && apt-get clean -y && rm -rf /var/lib/apt/lists/*
-    # php-pear depends on PHP 8.2, so we need to switch back to php-7.4 after installing it
-    RUN update-alternatives --set php /usr/bin/php7.4 && pecl channel-update pecl.php.net
     RUN cp "/usr/lib/$(gcc -dumpmachine)"/libfuzzy.* /usr/lib; pecl install ssdeep && pecl install rdkafka && pecl install simdjson
     RUN git clone --recursive --depth=1 https://github.com/kjdev/php-ext-brotli.git && \
         cd php-ext-brotli && phpize && ./configure && make && make install
 
-FROM "${DOCKER_HUB_PROXY}ubuntu:22.04" as python-build
+FROM "${DOCKER_HUB_PROXY}debian:bullseye-slim" as python-build
     ENV DEBIAN_FRONTEND noninteractive
-    RUN apt-get update; apt-get install -y --no-install-recommends python3-pip && apt-get autoremove -y && apt-get clean -y && rm -rf /var/lib/apt/lists/*
+
+    RUN apt-get update; apt-get install -y --no-install-recommends python3-pip git && apt-get autoremove -y && apt-get clean -y && rm -rf /var/lib/apt/lists/*
     RUN mkdir /wheels
+    ARG MISP_TAG
+    ARG MISP_COMMIT
+    # Download MISP using git in the /var/www/ directory. Remove unnecessary items.
+    RUN <<-EOF
+            if [ ! -z "${MISP_COMMIT}" ]; then
+                git clone https://github.com/MISP/MISP.git /var/www/MISP && cd /var/www/MISP && git checkout "${MISP_COMMIT}"
+            else
+                git clone --branch "${MISP_TAG}" --depth 1 https://github.com/MISP/MISP.git /var/www/MISP
+            fi
+
+            cd /var/www/MISP || exit; git -c submodule."PyMISP".update=none submodule update --init --recursive .
+
+            # Remove modules only used during MISP build
+            set -- 'coveralls' 'codecov$' 'requests-mock' 'nose'
+            for mod in "$@"; do
+                sed "/{$mod}/d" -i /var/www/MISP/requirements.txt
+            done;
+
+            # Add additional dependencies (container specific)
+            set -- 'redis' 'python-magic' 'lief>=0.13.1' 'pydeep2' 'misp-lib-stix2' 'maec' 'mixbox'
+            for mod in "$@"; do
+                grep -qxF ${mod} /var/www/MISP/requirements.txt || echo ${mod} >> /var/www/MISP/requirements.txt
+            done;
+
+            pip3 wheel --no-cache-dir -w /wheels/ -r /var/www/MISP/requirements.txt
+            
+            # Remove files we do not care for
+            rm -r /var/www/MISP/PyMISP
+            find /var/www/MISP/INSTALL/* ! -name 'MYSQL.sql' -type f -exec rm {} +
+            find /var/www/MISP/INSTALL/* ! -name 'MYSQL.sql' -type l -exec rm {} +
+            rm -rf /var/www/MISP/.git
+
+            # This is PHP related but useful to do in the same step as checkout of MISP
+            mkdir -p /var/www/MISP/app/Vendor && mkdir -p /var/www/MISP/app/Plugin
+EOF
 
     # Grab module wheels we need
     RUN pip3 wheel --no-cache-dir -w /wheels/ plyara pyzmq redis python-magic lief>=0.13.1 pymisp pydeep2 misp-lib-stix2 stix cybox maec mixbox
 
-FROM "${DOCKER_HUB_PROXY}ubuntu:22.04"
+FROM "${DOCKER_HUB_PROXY}debian:bullseye-slim"
 
     ENV DEBIAN_FRONTEND noninteractive
     ARG MISP_TAG
     ARG MISP_COMMIT
     ARG PHP_VER
-    RUN apt-get update && apt-get install -y gpg-agent software-properties-common && add-apt-repository -y ppa:ondrej/php \
-        && apt-get autoremove -y && apt-get clean -y && rm -rf /var/lib/apt/lists/*
     RUN apt-get update; apt-get install -y --no-install-recommends \
         procps \
         sudo \
@@ -101,41 +134,28 @@ FROM "${DOCKER_HUB_PROXY}ubuntu:22.04"
         python3-setuptools \
         python3-pip \
         # PHP Requirements
-        php7.4 \
-        php7.4-apcu \
-        php7.4-curl \
-        php7.4-xml \
-        php7.4-intl \
-        php7.4-bcmath \
-        php7.4-mbstring \
-        php7.4-mysql \
-        php7.4-redis \
-        php7.4-gd \
-        php7.4-fpm \
-        php7.4-zip \
+        php \
+        php-apcu \
+        php-curl \
+        php-xml \
+        php-intl \
+        php-bcmath \
+        php-mbstring \
+        php-mysql \
+        php-redis \
+        php-gd \
+        php-fpm \
+        php-zip \
         librdkafka1 \
         libbrotli1 \
-        libsimdjson9 \
+        libsimdjson5 \
         # Unsure we need these
         zip unzip \
         # Require for advanced an unattended configuration
         curl jq \
         && apt-get autoremove -y && apt-get clean -y && rm -rf /var/lib/apt/lists/*
 
-    # Download MISP using git in the /var/www/ directory. Remove unnecessary items.
-    RUN <<-EOF
-            if [ ! -z "${MISP_COMMIT}" ]; then
-                git clone https://github.com/MISP/MISP.git /var/www/MISP && cd /var/www/MISP && git checkout "${MISP_COMMIT}"
-            else
-                git clone --branch "${MISP_TAG}" --depth 1 https://github.com/MISP/MISP.git /var/www/MISP
-            fi
-            cd /var/www/MISP || exit; git -c submodule."PyMISP".update=none submodule update --init --recursive .
-            rm -r /var/www/MISP/PyMISP
-            find /var/www/MISP/INSTALL/* ! -name 'MYSQL.sql' -type f -exec rm {} +
-            find /var/www/MISP/INSTALL/* ! -name 'MYSQL.sql' -type l -exec rm {} +
-            rm -rf /var/www/MISP/.git
-            mkdir -p /var/www/MISP/app/Vendor && mkdir -p /var/www/MISP/app/Plugin
-EOF
+    # TODO: Copy misp from python-builder
 
     # Python Modules
     COPY --from=python-build /wheels /wheels
@@ -145,6 +165,7 @@ EOF
     COPY --from=php-build ["/usr/lib/php/${PHP_VER}/ssdeep.so", "/usr/lib/php/${PHP_VER}/rdkafka.so", "/usr/lib/php/${PHP_VER}/brotli.so", "/usr/lib/php/${PHP_VER}/simdjson.so", "/usr/lib/php/${PHP_VER}/"]
 
     # Do an early chown to limit image size
+    COPY --from=python-build --chown=www-data:www-data /var/www/MISP /var/www/MISP
     COPY --from=composer-build --chown=www-data:www-data /tmp/Vendor /var/www/MISP/app/Vendor
     COPY --from=composer-build --chown=www-data:www-data /tmp/Plugin /var/www/MISP/app/Plugin
 
