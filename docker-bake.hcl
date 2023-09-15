@@ -79,7 +79,7 @@ target "misp-modules" {
   tags = ["${DOCKER_USERNAME}/misp-docker:modules-latest", "${DOCKER_USERNAME}/misp-docker:modules-${DOCKER_IMG_TAG}", "${DOCKER_USERNAME}/misp-docker:modules-${MODULES_TAG}"]
   args = {
     "MODULES_TAG": "${MODULES_TAG}",
-    "MODULES_COMMIT": "${MODULES_COMMIT}"
+    "MODULES_COMMIT": "${MODULES_COMMIT}",
   }
   platforms = "${PLATFORMS}"
 }
@@ -99,7 +99,7 @@ target "misp" {
     "PYPI_MISP_LIB_STIX2_VERSION": "${PYPI_MISP_LIB_STIX2_VERSION}",
     "PYPI_MAEC_VERSION": "${PYPI_MAEC_VERSION}",
     "PYPI_MIXBOX_VERSION": "${PYPI_MIXBOX_VERSION}",
-    "PYPI_CYBOX_VERSION": "${PYPI_CYBOX_VERSION}"
+    "PYPI_CYBOX_VERSION": "${PYPI_CYBOX_VERSION}",
   }
   platforms = "${PLATFORMS}"
 }
