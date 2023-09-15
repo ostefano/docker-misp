@@ -68,7 +68,6 @@ FROM "${DOCKER_HUB_PROXY}debian:bullseye-slim" as python-build
     ARG MISP_COMMIT
     # Download MISP using git in the /var/www/ directory. Remove unnecessary items.
     RUN <<-EOF
-        mkdir /wheels
         if [ ! -z "${MISP_COMMIT}" ]; then
             git clone https://github.com/MISP/MISP.git /var/www/MISP && cd /var/www/MISP && git checkout "${MISP_COMMIT}"
         else
@@ -85,6 +84,10 @@ FROM "${DOCKER_HUB_PROXY}debian:bullseye-slim" as python-build
             cat requirements.txt
         fi
         # End of pymisp version fixing hack
+EOF
+
+    RUN <<-EOF
+        mkdir /wheels
 
         # Remove modules only used during MISP build
         set -- 'coveralls' 'codecov' 'requests-mock' 'nose' 'pip'
@@ -128,8 +131,6 @@ FROM "${DOCKER_HUB_PROXY}debian:bullseye-slim" as python-build
         find /var/www/MISP/INSTALL/* ! -name 'MYSQL.sql' -type l -exec rm {} +
         # Remove most files in .git - we do not use git functionality in docker
         find /var/www/MISP/.git/* ! -name HEAD -exec rm -rf {} +
-        # Diagnostics wants this file to be present and writable. Entrypoint will override any perm we set here
-        touch /var/www/MISP/.git/ORIG_HEAD
 EOF
 
 FROM "${DOCKER_HUB_PROXY}debian:bullseye-slim"
@@ -217,6 +218,8 @@ EOF
         find /var/www/MISP \( ! -user www-data -or ! -group www-data \) -exec chown www-data:www-data '{}' +;
         find /var/www/MISP -not -perm 550 -type f -exec chmod 0550 '{}' +;
         find /var/www/MISP -not -perm 770 -type d -exec chmod 0770 '{}' +;
+        # Diagnostics wants this file to be present and writable even if we do not use git in docker land
+        touch /var/www/MISP/.git/ORIG_HEAD && chmod 0600 /var/www/MISP/.git/ORIG_HEAD && chown www-data:www-data /var/www/MISP/.git/ORIG_HEAD
 EOF
 
     # Copy all our image specific files to appropriate locations

@@ -160,8 +160,6 @@ enforce_misp_data_permissions(){
     echo "... chmod -R 0770 directories /var/www/MISP/app/Config" && find /var/www/MISP/app/Config -not -perm 770 -type d -exec chmod 0770 {} +
     # We make configuration files read only
     echo "... chmod 600 /var/www/MISP/app/Config/{config,database,email}.php" && chmod 600 /var/www/MISP/app/Config/{config,database,email}.php
-    # Satisfy MISP diagnostics. Silently fails if file is not present
-    chmod -f 600 /var/www/MISP/.git/ORIG_HEAD
 }
 
 flip_nginx() {
