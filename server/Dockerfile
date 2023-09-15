@@ -93,13 +93,20 @@ FROM "${DOCKER_HUB_PROXY}debian:bullseye-slim" as python-build
         done;
 
         # Add additional dependencies (container specific)
+        # The "set" line contains the list of modules we want to ensure are present.
+        # PYPI_MODULE_NAME_VERSION env vars can be set to specify the version desired,
+        # e.g. PYPI_SURICATA_VERSION="==2.0" to specify exactly version 2.0 for the suricata package
+        #
+        # 1. Check for presence of each module in requirements.txt
+        # 2. If missing, add it (with optional version from env (defaults to empty string))
+        # 3. If present, replace with our specified version if it exists, otherwise leave
+        #    the upstream version alone.
         set -- "redis" "lief" "pydeep2" "python-magic" "misp-lib-stix2" "maec" "mixbox" "cybox"
         for mod in "$@"; do
             mod_version_var=$(echo "PYPI_${mod}_VERSION" | tr '[:lower:]' '[:upper:]' | tr '-' '_')
             mod_version=$(eval "echo \"\$$mod_version_var\"")
             grep -q ${mod} /var/www/MISP/requirements.txt
             exists=$?
-            echo "${mod} -> ${exists}"
             if [ "${exists}" -eq "1" ]; then
                 echo "Adding missing module ${mod} with version '${mod_version}'"
                 echo ${mod}${mod_version} >> /var/www/MISP/requirements.txt
@@ -202,7 +209,7 @@ EOF
     # The spirit of the upstream dockerization is to make:
     #   1) User and group aligned in terms of permissions
     #   2) Files executable and read only, because of some rogue scripts like 'cake'
-    #   3) Directories writable, because sometimes MISP add new new files
+    #   3) Directories writable, because sometimes MISP add new files
 
     RUN <<-EOF
         cp -R /var/www/MISP/app/files /var/www/MISP/app/files.dist
