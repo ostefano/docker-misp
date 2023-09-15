@@ -6,7 +6,10 @@ FROM "${DOCKER_HUB_PROXY}debian:bullseye-slim" as composer-build
     ENV COMPOSER_ALLOW_SUPERUSER 1
     ARG MISP_TAG
     ARG MISP_COMMIT
-    RUN apt-get update; apt-get install -y --no-install-recommends \
+    RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+        --mount=type=cache,target=/var/lib/apt,sharing=locked \
+        rm -f /etc/apt/apt.conf.d/docker-clean; echo 'Binary::apt::APT::Keep-Downloaded-Packages "true";' > /etc/apt/apt.conf.d/keep-cache; \
+        apt-get update; apt-get install -y --no-install-recommends \
         ca-certificates \
         php \
         php-apcu \
@@ -20,8 +23,7 @@ FROM "${DOCKER_HUB_PROXY}debian:bullseye-slim" as composer-build
         php-gd \
         php-fpm \
         php-zip \
-        unzip \
-        && apt-get autoremove -y && apt-get clean -y && rm -rf /var/lib/apt/lists/*
+        unzip
     
     WORKDIR /tmp
     ADD https://raw.githubusercontent.com/MISP/MISP/${MISP_COMMIT:-${MISP_TAG}}/app/composer.json /tmp
@@ -42,7 +44,10 @@ FROM "${DOCKER_HUB_PROXY}debian:bullseye-slim" as composer-build
 FROM "${DOCKER_HUB_PROXY}debian:bullseye-slim" as php-build
     ENV DEBIAN_FRONTEND noninteractive
     ENV TZ Etc/UTC
-    RUN apt-get update; apt-get install -y --no-install-recommends \
+    RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+        --mount=type=cache,target=/var/lib/apt,sharing=locked \
+        rm -f /etc/apt/apt.conf.d/docker-clean; echo 'Binary::apt::APT::Keep-Downloaded-Packages "true";' > /etc/apt/apt.conf.d/keep-cache; \
+        apt-get update; apt-get install -y --no-install-recommends \
         gcc \
         g++ \
         make \
@@ -54,8 +59,7 @@ FROM "${DOCKER_HUB_PROXY}debian:bullseye-slim" as php-build
         php-pear \
         librdkafka-dev \
         libsimdjson-dev \
-        git \
-        && apt-get autoremove -y && apt-get clean -y && rm -rf /var/lib/apt/lists/*
+        git
     RUN cp "/usr/lib/$(gcc -dumpmachine)"/libfuzzy.* /usr/lib; pecl channel-update pecl.php.net && pecl install ssdeep && pecl install rdkafka && pecl install simdjson
     RUN git clone --recursive --depth=1 https://github.com/kjdev/php-ext-brotli.git && \
         cd php-ext-brotli && phpize && ./configure && make && make install
@@ -63,8 +67,10 @@ FROM "${DOCKER_HUB_PROXY}debian:bullseye-slim" as php-build
 FROM "${DOCKER_HUB_PROXY}debian:bullseye-slim" as python-build
     ENV DEBIAN_FRONTEND noninteractive
 
-    RUN apt-get update; apt-get install -y --no-install-recommends python3-pip git && apt-get autoremove -y && apt-get clean -y && rm -rf /var/lib/apt/lists/*
-    RUN mkdir /wheels
+    RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+        --mount=type=cache,target=/var/lib/apt,sharing=locked \
+        rm -f /etc/apt/apt.conf.d/docker-clean; echo 'Binary::apt::APT::Keep-Downloaded-Packages "true";' > /etc/apt/apt.conf.d/keep-cache; \
+        apt-get update; apt-get install -y --no-install-recommends python3-pip git
     ARG MISP_TAG
     ARG MISP_COMMIT
     # Download MISP using git in the /var/www/ directory. Remove unnecessary items.
@@ -116,7 +122,10 @@ FROM "${DOCKER_HUB_PROXY}debian:bullseye-slim"
     ARG MISP_TAG
     ARG MISP_COMMIT
     ARG PHP_VER
-    RUN apt-get update; apt-get install -y --no-install-recommends \
+    RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+        --mount=type=cache,target=/var/lib/apt,sharing=locked \
+        rm -f /etc/apt/apt.conf.d/docker-clean; echo 'Binary::apt::APT::Keep-Downloaded-Packages "true";' > /etc/apt/apt.conf.d/keep-cache; \
+        apt-get update; apt-get install -y --no-install-recommends \
         procps \
         sudo \
         nginx \
@@ -152,12 +161,12 @@ FROM "${DOCKER_HUB_PROXY}debian:bullseye-slim"
         # Unsure we need these
         zip unzip \
         # Require for advanced an unattended configuration
-        curl jq \
-        && apt-get autoremove -y && apt-get clean -y && rm -rf /var/lib/apt/lists/*
+        curl \
+        jq
 
-    # Install python modules
-    COPY --from=python-build /wheels /wheels
-    RUN pip3 install --no-cache-dir /wheels/*.whl && rm -rf /wheels
+    # Install python modules from cache written to by python-build
+    RUN --mount=type=bind,from=python-build,source=/wheels,target=/wheels \
+        pip3 install --no-cache-dir /wheels/*.whl
 
     # PHP: install prebuilt libraries, then install the app's PHP deps
     COPY --from=php-build ["/usr/lib/php/${PHP_VER}/ssdeep.so", "/usr/lib/php/${PHP_VER}/rdkafka.so", "/usr/lib/php/${PHP_VER}/brotli.so", "/usr/lib/php/${PHP_VER}/simdjson.so", "/usr/lib/php/${PHP_VER}/"]
@@ -196,7 +205,7 @@ EOF
         find /var/www/MISP -not -perm 550 -type f -exec chmod 0550 '{}' +;
         find /var/www/MISP -not -perm 770 -type d -exec chmod 0770 '{}' +;
 EOF
-
+        
     # Copy all our image specific files to appropriate locations
     COPY files/ /
     ENTRYPOINT [ "/entrypoint.sh" ]
