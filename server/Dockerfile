@@ -93,7 +93,7 @@ FROM "${DOCKER_HUB_PROXY}debian:bullseye-slim" as python-build
         done;
 
         # Add additional dependencies (container specific)
-        set -- 'redis' 'lief>=0.13.1' 'pydeep2' 'python-magic' 'misp-lib-stix2' 'maec' 'mixbox' 'cybox'
+        set -- "redis${PYPI_REDIS_VERSION}" "lief${PYPI_LIEF_VERSION}" "pydeep2${PYPI_PYDEEP2_VERSION}" "python-magic${PYPI_PYTHON_MAGIC_VERSION}" "misp-lib-stix2${PYPI_MISP_LIB_STIX2_VERSION}" "maec${PYPI_MAEC_VERSION}" "mixbox${PYPI_MIXBOX_VERSION}" "cybox${PYPI_CYBOX_VERSION}"
         for mod in "$@"; do
             grep -qxF ${mod} /var/www/MISP/requirements.txt || echo ${mod} >> /var/www/MISP/requirements.txt
         done;
@@ -190,14 +190,12 @@ EOF
     #   3) Directories writable, because sometimes MISP add new new files
 
     RUN <<-EOF
-        cp -R /var/www/MISP/app/files /var/www/MISP/app/files.dist;
-        cp -R /var/www/MISP/app/Config /var/www/MISP/app/Config.dist;
+        cp -R /var/www/MISP/app/files /var/www/MISP/app/files.dist
+        cp -R /var/www/MISP/app/Config /var/www/MISP/app/Config.dist
         find /var/www/MISP \( ! -user www-data -or ! -group www-data \) -exec chown www-data:www-data '{}' +;
         find /var/www/MISP -not -perm 550 -type f -exec chmod 0550 '{}' +;
         find /var/www/MISP -not -perm 770 -type d -exec chmod 0770 '{}' +;
 EOF
-
-
 
     # Copy all our image specific files to appropriate locations
     COPY files/ /
