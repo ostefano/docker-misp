@@ -75,7 +75,16 @@ FROM "${DOCKER_HUB_PROXY}debian:bullseye-slim" as python-build
                 git clone --branch "${MISP_TAG}" --depth 1 https://github.com/MISP/MISP.git /var/www/MISP
             fi
 
-            cd /var/www/MISP || exit; git -c submodule."PyMISP".update=none submodule update --init --recursive .
+            cd /var/www/MISP || exit; git submodule update --init --recursive .
+
+            # Until MISP project specifies its required PyMISP version, we grab this from the submodule
+            pymispversion=$(head -n1 PyMISP/pymisp/__init__.py | awk '{print $3}' | tr -d \')
+
+            if [ -n "$pymispversion" ]; then
+                sed -i "s/pymisp$/pymisp==$pymispversion/" requirements.txt
+                cat requirements.txt
+            fi
+            # End of pymisp version fixing hack
 
             # Remove modules only used during MISP build
             set -- 'coveralls' 'codecov$' 'requests-mock' 'nose'
@@ -84,7 +93,7 @@ FROM "${DOCKER_HUB_PROXY}debian:bullseye-slim" as python-build
             done;
 
             # Add additional dependencies (container specific)
-            set -- 'redis' 'python-magic' 'lief>=0.13.1' 'pydeep2' 'misp-lib-stix2' 'maec' 'mixbox'
+            set -- 'redis' 'lief>=0.13.1' 'pydeep2' 'misp-lib-stix2' 'maec' 'mixbox'
             for mod in "$@"; do
                 grep -qxF ${mod} /var/www/MISP/requirements.txt || echo ${mod} >> /var/www/MISP/requirements.txt
             done;
@@ -147,9 +156,7 @@ FROM "${DOCKER_HUB_PROXY}debian:bullseye-slim"
         curl jq \
         && apt-get autoremove -y && apt-get clean -y && rm -rf /var/lib/apt/lists/*
 
-    # TODO: Copy misp from python-builder
-
-    # Python Modules
+    # Install python modules
     COPY --from=python-build /wheels /wheels
     RUN pip3 install --no-cache-dir /wheels/*.whl && rm -rf /wheels
 
