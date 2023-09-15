@@ -126,7 +126,10 @@ FROM "${DOCKER_HUB_PROXY}debian:bullseye-slim" as python-build
         rm -r /var/www/MISP/PyMISP
         find /var/www/MISP/INSTALL/* ! -name 'MYSQL.sql' -type f -exec rm {} +
         find /var/www/MISP/INSTALL/* ! -name 'MYSQL.sql' -type l -exec rm {} +
-        rm -rf /var/www/MISP/.git
+        # Remove most files in .git - we do not use git functionality in docker
+        find /var/www/MISP/.git/* ! -name HEAD -exec rm -rf {} +
+        # Diagnostics wants this file to be present and writable. Entrypoint will override any perm we set here
+        touch /var/www/MISP/.git/ORIG_HEAD
 
         # This is PHP related but useful to do in the same step as checkout of MISP
         mkdir -p /var/www/MISP/app/Vendor && mkdir -p /var/www/MISP/app/Plugin
