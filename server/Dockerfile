@@ -130,9 +130,6 @@ FROM "${DOCKER_HUB_PROXY}debian:bullseye-slim" as python-build
         find /var/www/MISP/.git/* ! -name HEAD -exec rm -rf {} +
         # Diagnostics wants this file to be present and writable. Entrypoint will override any perm we set here
         touch /var/www/MISP/.git/ORIG_HEAD
-
-        # This is PHP related but useful to do in the same step as checkout of MISP
-        mkdir -p /var/www/MISP/app/Vendor && mkdir -p /var/www/MISP/app/Plugin
 EOF
 
 FROM "${DOCKER_HUB_PROXY}debian:bullseye-slim"
