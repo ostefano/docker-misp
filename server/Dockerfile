@@ -69,45 +69,45 @@ FROM "${DOCKER_HUB_PROXY}debian:bullseye-slim" as python-build
     ARG MISP_COMMIT
     # Download MISP using git in the /var/www/ directory. Remove unnecessary items.
     RUN <<-EOF
-            if [ ! -z "${MISP_COMMIT}" ]; then
-                git clone https://github.com/MISP/MISP.git /var/www/MISP && cd /var/www/MISP && git checkout "${MISP_COMMIT}"
-            else
-                git clone --branch "${MISP_TAG}" --depth 1 https://github.com/MISP/MISP.git /var/www/MISP
-            fi
+        if [ ! -z "${MISP_COMMIT}" ]; then
+            git clone https://github.com/MISP/MISP.git /var/www/MISP && cd /var/www/MISP && git checkout "${MISP_COMMIT}"
+        else
+            git clone --branch "${MISP_TAG}" --depth 1 https://github.com/MISP/MISP.git /var/www/MISP
+        fi
 
-            cd /var/www/MISP || exit; git submodule update --init --recursive .
+        cd /var/www/MISP || exit; git submodule update --init --recursive .
 
-            # Until MISP project specifies its required PyMISP version, we grab this from the submodule
-            pymispversion=$(head -n1 PyMISP/pymisp/__init__.py | awk '{print $3}' | tr -d \')
+        # Until MISP project specifies its required PyMISP version, we grab this from the submodule
+        pymispversion=$(head -n1 PyMISP/pymisp/__init__.py | awk '{print $3}' | tr -d \')
 
-            if [ -n "$pymispversion" ]; then
-                sed -i "s/pymisp$/pymisp==$pymispversion/" requirements.txt
-                cat requirements.txt
-            fi
-            # End of pymisp version fixing hack
+        if [ -n "$pymispversion" ]; then
+            sed -i "s/pymisp$/pymisp==$pymispversion/" requirements.txt
+            cat requirements.txt
+        fi
+        # End of pymisp version fixing hack
 
-            # Remove modules only used during MISP build
-            set -- 'coveralls' 'codecov$' 'requests-mock' 'nose'
-            for mod in "$@"; do
-                sed "/${mod}/d" -i /var/www/MISP/requirements.txt
-            done;
+        # Remove modules only used during MISP build
+        set -- 'coveralls' 'codecov$' 'requests-mock' 'nose' 'pip'
+        for mod in "$@"; do
+            sed "/${mod}/d" -i /var/www/MISP/requirements.txt
+        done;
 
-            # Add additional dependencies (container specific)
-            set -- 'redis' 'lief>=0.13.1' 'pydeep2' 'python-magic' 'misp-lib-stix2' 'maec' 'mixbox'
-            for mod in "$@"; do
-                grep -qxF ${mod} /var/www/MISP/requirements.txt || echo ${mod} >> /var/www/MISP/requirements.txt
-            done;
+        # Add additional dependencies (container specific)
+        set -- 'redis' 'lief>=0.13.1' 'pydeep2' 'python-magic' 'misp-lib-stix2' 'maec' 'mixbox'
+        for mod in "$@"; do
+            grep -qxF ${mod} /var/www/MISP/requirements.txt || echo ${mod} >> /var/www/MISP/requirements.txt
+        done;
 
-            pip3 wheel --no-cache-dir -w /wheels/ -r /var/www/MISP/requirements.txt
-            
-            # Remove files we do not care for
-            rm -r /var/www/MISP/PyMISP
-            find /var/www/MISP/INSTALL/* ! -name 'MYSQL.sql' -type f -exec rm {} +
-            find /var/www/MISP/INSTALL/* ! -name 'MYSQL.sql' -type l -exec rm {} +
-            rm -rf /var/www/MISP/.git
+        pip3 wheel --no-cache-dir -w /wheels/ -r /var/www/MISP/requirements.txt
+        
+        # Remove files we do not care for
+        rm -r /var/www/MISP/PyMISP
+        find /var/www/MISP/INSTALL/* ! -name 'MYSQL.sql' -type f -exec rm {} +
+        find /var/www/MISP/INSTALL/* ! -name 'MYSQL.sql' -type l -exec rm {} +
+        rm -rf /var/www/MISP/.git
 
-            # This is PHP related but useful to do in the same step as checkout of MISP
-            mkdir -p /var/www/MISP/app/Vendor && mkdir -p /var/www/MISP/app/Plugin
+        # This is PHP related but useful to do in the same step as checkout of MISP
+        mkdir -p /var/www/MISP/app/Vendor && mkdir -p /var/www/MISP/app/Plugin
 EOF
 
 FROM "${DOCKER_HUB_PROXY}debian:bullseye-slim"
@@ -121,7 +121,6 @@ FROM "${DOCKER_HUB_PROXY}debian:bullseye-slim"
         sudo \
         nginx \
         supervisor \
-        git \
         cron \
         openssl \
         gpg \
@@ -170,30 +169,35 @@ FROM "${DOCKER_HUB_PROXY}debian:bullseye-slim"
 
     # Gather these in one layer, only act on actual directories under /etc/php/
     RUN <<-EOF
-            set -- "ssdeep" "rdkafka" "brotli" "simdjson"
-            for mod in "$@"; do
-                for dir in /etc/php/*/; do
-                    echo "extension=${mod}.so" > "${dir}mods-available/${mod}.ini"
-                done;
-                phpenmod "${mod}"
+        set -- "ssdeep" "rdkafka" "brotli" "simdjson"
+        for mod in "$@"; do
+            for dir in /etc/php/*/; do
+                echo "extension=${mod}.so" > "${dir}mods-available/${mod}.ini"
             done;
-            phpenmod redis
+            phpenmod "${mod}"
+        done;
+        phpenmod redis
 EOF
 
     # nginx
     RUN rm /etc/nginx/sites-enabled/*; mkdir /run/php /etc/nginx/certs
 
     # Make a copy of the file and configuration stores, so we can sync from it
-    RUN cp -R /var/www/MISP/app/files /var/www/MISP/app/files.dist; \
-        cp -R /var/www/MISP/app/Config /var/www/MISP/app/Config.dist;
 
-    # The spirit of the upstrem dockerization is to make:
+    # The spirit of the upstream dockerization is to make:
     #   1) User and group aligned in terms of permissions
     #   2) Files executable and read only, because of some rogue scripts like 'cake'
     #   3) Directories writable, because sometimes MISP add new new files
-    RUN find /var/www/MISP \( ! -user www-data -or ! -group www-data \) -exec chown www-data:www-data '{}' +; \
-        find /var/www/MISP -not -perm 550 -type f -exec chmod 0550 '{}' +; \
+
+    RUN <<-EOF
+        cp -R /var/www/MISP/app/files /var/www/MISP/app/files.dist;
+        cp -R /var/www/MISP/app/Config /var/www/MISP/app/Config.dist;
+        find /var/www/MISP \( ! -user www-data -or ! -group www-data \) -exec chown www-data:www-data '{}' +;
+        find /var/www/MISP -not -perm 550 -type f -exec chmod 0550 '{}' +;
         find /var/www/MISP -not -perm 770 -type d -exec chmod 0770 '{}' +;
+EOF
+
+
 
     # Copy all our image specific files to appropriate locations
     COPY files/ /
