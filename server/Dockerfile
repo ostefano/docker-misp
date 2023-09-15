@@ -93,7 +93,7 @@ FROM "${DOCKER_HUB_PROXY}debian:bullseye-slim" as python-build
             done;
 
             # Add additional dependencies (container specific)
-            set -- 'redis' 'lief>=0.13.1' 'pydeep2' 'misp-lib-stix2' 'maec' 'mixbox'
+            set -- 'redis' 'lief>=0.13.1' 'pydeep2' 'python-magic' 'misp-lib-stix2' 'maec' 'mixbox'
             for mod in "$@"; do
                 grep -qxF ${mod} /var/www/MISP/requirements.txt || echo ${mod} >> /var/www/MISP/requirements.txt
             done;
