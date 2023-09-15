@@ -34,13 +34,12 @@ variable "PYPI_CYBOX_VERSION" {
   default = ""
 }
 
-
 variable "DOCKER_USERNAME" {
-  default = ""
+  default = null
 }
 
 variable "DOCKER_IMG_TAG" {
-  default = ""
+  default = null
 }
 
 variable "MODULES_TAG" {

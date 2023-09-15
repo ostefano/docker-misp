@@ -93,9 +93,24 @@ FROM "${DOCKER_HUB_PROXY}debian:bullseye-slim" as python-build
         done;
 
         # Add additional dependencies (container specific)
-        set -- "redis${PYPI_REDIS_VERSION}" "lief${PYPI_LIEF_VERSION}" "pydeep2${PYPI_PYDEEP2_VERSION}" "python-magic${PYPI_PYTHON_MAGIC_VERSION}" "misp-lib-stix2${PYPI_MISP_LIB_STIX2_VERSION}" "maec${PYPI_MAEC_VERSION}" "mixbox${PYPI_MIXBOX_VERSION}" "cybox${PYPI_CYBOX_VERSION}"
+        set -- "redis" "lief" "pydeep2" "python-magic" "misp-lib-stix2" "maec" "mixbox" "cybox"
         for mod in "$@"; do
-            grep -qxF ${mod} /var/www/MISP/requirements.txt || echo ${mod} >> /var/www/MISP/requirements.txt
+            mod_version_var=$(echo "PYPI_${mod}_VERSION" | tr '[:lower:]' '[:upper:]' | tr '-' '_')
+            mod_version=$(eval "echo \"\$$mod_version_var\"")
+            grep -q ${mod} /var/www/MISP/requirements.txt
+            exists=$?
+            echo "${mod} -> ${exists}"
+            if [ "${exists}" -eq "1" ]; then
+                echo "Adding missing module ${mod} with version '${mod_version}'"
+                echo ${mod}${mod_version} >> /var/www/MISP/requirements.txt
+            else
+                if [ "$(echo ${mod_version} | wc -m)" -gt 1 ]; then
+                    echo "Overwriting existing module ${mod}, version '${mod_version}'"
+                    sed -i "/${mod}/s/.*/${mod}${mod_version}/" /var/www/MISP/requirements.txt
+                else
+                    echo "Skipping overwriting ${mod} due to missing version variable"
+                fi
+            fi
         done;
 
         pip3 wheel --no-cache-dir -w /wheels/ -r /var/www/MISP/requirements.txt
