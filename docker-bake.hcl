@@ -76,7 +76,7 @@ group "default" {
 target "misp-modules" {
   context = "modules/."
   dockerfile = "Dockerfile"
-  tags = ["${DOCKER_USERNAME}/misp-docker:modules-latest", "${DOCKER_USERNAME}/misp-docker:modules-${DOCKER_IMG_TAG}", "${DOCKER_USERNAME}/misp-docker:modules-${MODULES_TAG}"]
+  tags = flatten(["${DOCKER_USERNAME}/misp-docker:modules-latest", "${DOCKER_USERNAME}/misp-docker:modules-${DOCKER_IMG_TAG}", MODULES_TAG != "" ? ["${DOCKER_USERNAME}/misp-docker:modules-${MODULES_TAG}"] : []])
   args = {
     "MODULES_TAG": "${MODULES_TAG}",
     "MODULES_COMMIT": "${MODULES_COMMIT}",
@@ -87,7 +87,7 @@ target "misp-modules" {
 target "misp" {
   context = "server/."
   dockerfile = "Dockerfile"
-  tags = ["${DOCKER_USERNAME}/misp-docker:core-latest", "${DOCKER_USERNAME}/misp-docker:core-${DOCKER_IMG_TAG}", "${DOCKER_USERNAME}/misp-docker:core-${MISP_TAG}"]
+  tags = flatten(["${DOCKER_USERNAME}/misp-docker:core-latest", "${DOCKER_USERNAME}/misp-docker:core-${DOCKER_IMG_TAG}", MISP_TAG != "" ? ["${DOCKER_USERNAME}/misp-docker:core-${MISP_TAG}"] : []])
   args = {
     "MISP_TAG": "${MISP_TAG}",
     "MISP_COMMIT": "${MISP_COMMIT}",
