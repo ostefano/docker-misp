@@ -87,13 +87,13 @@ FROM "${DOCKER_HUB_PROXY}debian:bullseye-slim" as python-build
         # End of pymisp version fixing hack
 
         # Remove modules only used during MISP build
-        set -- 'coveralls' 'codecov$' 'requests-mock' 'nose' 'pip'
+        set -- 'coveralls' 'codecov' 'requests-mock' 'nose' 'pip'
         for mod in "$@"; do
             sed "/${mod}/d" -i /var/www/MISP/requirements.txt
         done;
 
         # Add additional dependencies (container specific)
-        set -- 'redis' 'lief>=0.13.1' 'pydeep2' 'python-magic' 'misp-lib-stix2' 'maec' 'mixbox'
+        set -- 'redis' 'lief>=0.13.1' 'pydeep2' 'python-magic' 'misp-lib-stix2' 'maec' 'mixbox' 'cybox'
         for mod in "$@"; do
             grep -qxF ${mod} /var/www/MISP/requirements.txt || echo ${mod} >> /var/www/MISP/requirements.txt
         done;
