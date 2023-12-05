@@ -1,3 +1,8 @@
+# Announcement
+
+This repository is now archived as the project found a new home here: https://github.com/MISP/misp-docker
+Note: for the time being docker images will still be pushed to https://hub.docker.com/repository/docker/ostefano/misp-docker so you just need to update the git remote to migrate to the new repository :)
+
 # TAU's MISP Docker images
 
 [![Build Status](https://img.shields.io/github/actions/workflow/status/ostefano/docker-misp/release-latest.yml)](https://hub.docker.com/repository/docker/ostefano/misp-docker)
